@@ -1,3 +1,3 @@
-from .pybamm_cell import PyBaMMCell
+from .pybamm_cell import Cell, CellElectrical, CellElectrothermal
 
-__all__ = ["PyBaMMCell"]
+__all__ = ["Cell", "CellElectrical", "CellElectrothermal"]

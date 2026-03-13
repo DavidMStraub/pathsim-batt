@@ -1,3 +1,3 @@
-from .lumped import LumpedThermalModel
+from .lumped import LumpedThermal
 
-__all__ = ["LumpedThermalModel"]
+__all__ = ["LumpedThermal"]

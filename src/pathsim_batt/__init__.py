@@ -10,7 +10,13 @@ try:
 except ImportError:
     __version__ = "unknown"
 
-__all__ = ["__version__"]
+from .cells import Cell, CellElectrical, CellElectrothermal
+from .thermal import LumpedThermal
 
-from .cells import *
-from .thermal import *
+__all__ = [
+    "__version__",
+    "Cell",
+    "CellElectrical",
+    "CellElectrothermal",
+    "LumpedThermal",
+]
