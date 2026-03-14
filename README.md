@@ -27,7 +27,22 @@ PathSim-Batt extends the [PathSim](https://github.com/pathsim/pathsim) simulatio
 
 `Cell` is an alias for `CellElectrothermal`.
 
-Any PyBaMM battery model and parameter set can be injected. Extra PyBaMM output variables are accessible via `block.extra_outputs`.
+## PyBaMM integration
+
+The cell blocks wrap [PyBaMM](https://pybamm.org) models behind the PathSim block interface. PyBaMM handles the electrochemistry (SPMe, DFN, ...) while PathSim handles the system-level simulation loop, connections, and time stepping.
+
+- **Any PyBaMM model** can be injected via the `model` parameter
+- **Any parameter set** can be used via `parameter_values` (defaults to `Chen2020`)
+- **Extra output variables** from PyBaMM are accessible via `block.extra_outputs`
+- **Lazy initialisation** — the PyBaMM simulation is only built on the first timestep
+
+```python
+import pybamm
+
+model  = pybamm.lithium_ion.DFN(options={"thermal": "lumped"})
+params = pybamm.ParameterValues("Mohtat2020")
+cell   = CellElectrothermal(model=model, parameter_values=params)
+```
 
 ## Thermal coupling modes
 
