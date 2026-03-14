@@ -22,7 +22,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
@@ -35,9 +34,19 @@ test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]
-lint = [
-    "ruff>=0.9",
+docs = [
+    "sphinx>=7.0",
+    "furo",
+    "myst-parser",
+    "sphinx-copybutton",
+    "sphinx-design",
 ]
+
+[project.urls]
+Homepage = "https://pathsim.org"
+Documentation = "https://docs.pathsim.org/batt"
+Repository = "https://github.com/pathsim/pathsim-batt"
+Issues = "https://github.com/pathsim/pathsim-batt/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

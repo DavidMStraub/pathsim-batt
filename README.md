@@ -110,8 +110,6 @@ Sim.run(3600)
 scope.plot()
 ```
 
-Runnable scripts are in [`examples/`](examples/).
-
 ## Thermal coupling modes
 
 | Mode | Block | Owns cell temperature | Use when |
