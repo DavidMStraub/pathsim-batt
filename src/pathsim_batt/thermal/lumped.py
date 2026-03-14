@@ -1,9 +1,20 @@
-from __future__ import annotations
+#########################################################################################
+##
+##                          LUMPED THERMAL MODEL
+##                           (thermal/lumped.py)
+##
+##              Single-node thermal model for battery cell temperature
+##
+#########################################################################################
+
+# IMPORTS ===============================================================================
 
 import numpy as np
-from numpy.typing import NDArray
+
 from pathsim.blocks import DynamicalSystem
 
+
+# BLOCKS ================================================================================
 
 class LumpedThermal(DynamicalSystem):
     """Single-node lumped thermal model.
@@ -36,30 +47,27 @@ class LumpedThermal(DynamicalSystem):
     input_port_labels = {"Q_dot": 0, "T_amb": 1}
     output_port_labels = {"T": 0}
 
-    def __init__(
-        self,
-        mass: float = 0.065,
-        Cp: float = 750.0,
-        UA: float = 0.5,
-        T0: float = 298.15,
-    ) -> None:
-        if mass <= 0:
-            raise ValueError(f"mass must be positive, got {mass}")
-        if Cp <= 0:
-            raise ValueError(f"Cp must be positive, got {Cp}")
-        if UA < 0:
-            raise ValueError(f"UA must be non-negative, got {UA}")
+    def __init__(self, mass=0.065, Cp=750.0, UA=0.5, T0=298.15):
 
+        #input validation
+        if mass <= 0:
+            raise ValueError(f"'mass' must be positive but is {mass}")
+        if Cp <= 0:
+            raise ValueError(f"'Cp' must be positive but is {Cp}")
+        if UA < 0:
+            raise ValueError(f"'UA' must be non-negative but is {UA}")
+
+        #store parameters
         self.mass = float(mass)
         self.Cp = float(Cp)
         self.UA = float(UA)
 
-        def _fn_d(x: NDArray, u: NDArray, _t: float) -> NDArray:
-            (T,) = x
+        def _fn_d(x, u, t):
+            T, = x
             Q_dot, T_amb = u
             return np.array([(Q_dot - self.UA * (T - T_amb)) / (self.mass * self.Cp)])
 
-        def _fn_a(x: NDArray, _u: NDArray, _t: float) -> NDArray:
+        def _fn_a(x, u, t):
             return x.copy()
 
         super().__init__(
