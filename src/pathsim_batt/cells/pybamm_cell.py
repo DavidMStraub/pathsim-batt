@@ -36,12 +36,12 @@ class _CellBase(Block):
         self._extra_var_names = list(output_variables or [])
         self.extra_outputs = {}
 
-        #model defaults
+        # model defaults
         if model is None:
             model = pybamm.lithium_ion.SPMe(options={"thermal": thermal_option})
         self._model = model
 
-        #parameter setup — mark current and temperature as runtime inputs
+        # parameter setup — mark current and temperature as runtime inputs
         if parameter_values is None:
             parameter_values = pybamm.ParameterValues("Chen2020")
         parameter_values = parameter_values.copy()
@@ -49,7 +49,7 @@ class _CellBase(Block):
         parameter_values["Ambient temperature [K]"] = "[input]"
         self._parameter_values = parameter_values
 
-        #solver
+        # solver
         self._pybamm_solver = solver or pybamm.CasadiSolver(mode="safe")
 
         self._sim = None
@@ -71,7 +71,7 @@ class _CellBase(Block):
         self._stepped = False
 
     def step(self, t, dt):
-        #lazy initialisation on first step
+        # lazy initialisation on first step
         if self._sim is None:
             self._sim = pybamm.Simulation(
                 self._model,
