@@ -56,14 +56,12 @@ class TestPorts(unittest.TestCase):
     def test_reset_clears_state(self):
         for cls in (CellElectrical, CellElectrothermal):
             cell = cls()
-            cell._initialized = True
             cell._sim = object()
             cell.reset()
-            self.assertFalse(cell._initialized)
             self.assertIsNone(cell._sim)
 
 
-def _advance(cell, dt: float) -> None:
+def _advance(cell, dt):
     """Simulate one PathSim timestep: buffer → step → update."""
     cell.buffer(dt)
     cell.step(0.0, dt)
@@ -79,9 +77,8 @@ class TestElectrical(unittest.TestCase):
         self.cell.inputs[1] = 298.15  # T_cell
 
     def test_lazy_init_on_first_step(self):
-        self.assertFalse(self.cell._initialized)
+        self.assertIsNone(self.cell._sim)
         _advance(self.cell, 1.0)
-        self.assertTrue(self.cell._initialized)
         self.assertIsNotNone(self.cell._sim)
 
     def test_outputs_in_range(self):
@@ -115,9 +112,9 @@ class TestElectrothermal(unittest.TestCase):
         self.cell.inputs[1] = 298.15  # T_amb
 
     def test_lazy_init_on_first_step(self):
-        self.assertFalse(self.cell._initialized)
+        self.assertIsNone(self.cell._sim)
         _advance(self.cell, 1.0)
-        self.assertTrue(self.cell._initialized)
+        self.assertIsNotNone(self.cell._sim)
 
     def test_outputs_in_range(self):
         _advance(self.cell, 1.0)
