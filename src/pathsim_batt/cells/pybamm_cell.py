@@ -8,15 +8,13 @@
 ##
 #########################################################################################
 
-# IMPORTS ===============================================================================
+# IMPORTS ==============================================================================
 
-import numpy as np
 import pybamm
-
 from pathsim.blocks._block import Block
 
+# BASE =================================================================================
 
-# BASE ==================================================================================
 
 class _CellBase(Block):
     """Shared base for PyBaMM cell blocks.
@@ -28,8 +26,15 @@ class _CellBase(Block):
 
     initial_value = 0.0  # sentinel — makes PathSim call step() each cycle
 
-    def __init__(self, model, parameter_values, initial_soc, solver,
-                 output_variables, thermal_option):
+    def __init__(
+        self,
+        model,
+        parameter_values,
+        initial_soc,
+        solver,
+        output_variables,
+        thermal_option,
+    ):
         super().__init__()
 
         self._initial_soc = float(initial_soc)
@@ -55,10 +60,15 @@ class _CellBase(Block):
         self._sim = None
         self._stepped = False
 
-    # -- PathSim protocol ---------------------------------------------------------------
+    # -- PathSim protocol --------------------------------------------------------------
 
     def __len__(self):
         return 0
+
+    def set_solver(self, Solver, parent, **solver_args):
+        # PyBaMM manages its own integration; no PathSim engine is needed.
+        # The 'initial_value' sentinel is enough to make PathSim call step().
+        pass
 
     def reset(self):
         super().reset()
@@ -79,7 +89,9 @@ class _CellBase(Block):
                 solver=self._pybamm_solver,
             )
             self._sim.build(initial_soc=self._initial_soc, inputs=self._pybamm_inputs())
-            self._q_nominal = float(self._parameter_values["Nominal cell capacity [A.h]"])
+            self._q_nominal = float(
+                self._parameter_values["Nominal cell capacity [A.h]"]
+            )
 
         if not self._stepped:
             self._sim.step(dt, inputs=self._pybamm_inputs())
@@ -87,7 +99,7 @@ class _CellBase(Block):
 
         return True, 0.0, 1.0
 
-    # -- helpers ------------------------------------------------------------------------
+    # -- helpers -----------------------------------------------------------------------
 
     def _pybamm_inputs(self):
         """Build PyBaMM input dict from current block inputs."""
@@ -103,7 +115,8 @@ class _CellBase(Block):
         return max(0.0, min(1.0, self._initial_soc - q_dis / self._q_nominal))
 
 
-# BLOCKS ================================================================================
+# BLOCKS ===============================================================================
+
 
 class CellElectrical(_CellBase):
     """Cell block — electrical outputs only, external thermal coupling.
@@ -142,10 +155,22 @@ class CellElectrical(_CellBase):
     input_port_labels = {"I": 0, "T_cell": 1}
     output_port_labels = {"V": 0, "Q_heat": 1, "SOC": 2}
 
-    def __init__(self, model=None, parameter_values=None, initial_soc=1.0,
-                 solver=None, output_variables=None):
-        super().__init__(model, parameter_values, initial_soc, solver,
-                         output_variables, thermal_option="isothermal")
+    def __init__(
+        self,
+        model=None,
+        parameter_values=None,
+        initial_soc=1.0,
+        solver=None,
+        output_variables=None,
+    ):
+        super().__init__(
+            model,
+            parameter_values,
+            initial_soc,
+            solver,
+            output_variables,
+            thermal_option="isothermal",
+        )
 
     def update(self, t):
         if self._sim is None or self._sim.solution is None:
@@ -195,10 +220,22 @@ class CellElectrothermal(_CellBase):
     input_port_labels = {"I": 0, "T_amb": 1}
     output_port_labels = {"V": 0, "T": 1, "Q_heat": 2, "SOC": 3}
 
-    def __init__(self, model=None, parameter_values=None, initial_soc=1.0,
-                 solver=None, output_variables=None):
-        super().__init__(model, parameter_values, initial_soc, solver,
-                         output_variables, thermal_option="lumped")
+    def __init__(
+        self,
+        model=None,
+        parameter_values=None,
+        initial_soc=1.0,
+        solver=None,
+        output_variables=None,
+    ):
+        super().__init__(
+            model,
+            parameter_values,
+            initial_soc,
+            solver,
+            output_variables,
+            thermal_option="lumped",
+        )
 
     def update(self, t):
         if self._sim is None or self._sim.solution is None:
