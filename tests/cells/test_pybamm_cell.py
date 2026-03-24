@@ -90,7 +90,6 @@ class TestElectrical(unittest.TestCase):
         self.assertLessEqual(self.cell.outputs[2], 1.0)
 
     def test_step_returns_success(self):
-        self.cell.set_solver(None, parent=None)
         self.cell.buffer(1.0)
         success, error, scale = self.cell.step(0.0, 1.0)
         self.assertTrue(success)
@@ -127,7 +126,6 @@ class TestElectrothermal(unittest.TestCase):
         self.assertLessEqual(self.cell.outputs[3], 1.0)
 
     def test_step_returns_success(self):
-        self.cell.set_solver(None, parent=None)
         self.cell.buffer(1.0)
         success, error, scale = self.cell.step(0.0, 1.0)
         self.assertTrue(success)

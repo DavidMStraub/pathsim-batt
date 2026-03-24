@@ -65,11 +65,6 @@ class _CellBase(Block):
     def __len__(self):
         return 0
 
-    def set_solver(self, Solver, parent, **solver_args):
-        # PyBaMM manages its own integration; no PathSim engine is needed.
-        # The 'initial_value' sentinel is enough to make PathSim call step().
-        pass
-
     def reset(self):
         super().reset()
         self._sim = None
