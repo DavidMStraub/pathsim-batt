@@ -1,30 +1,41 @@
 #########################################################################################
 ##
-##                              PyBaMM CELL BLOCKS
-##                          (cells/pybamm_cell.py)
+##                          PYBAMM CELL BLOCKS
+##                           (cells/pybamm_cell.py)
 ##
-##                  Battery cell blocks wrapping PyBaMM models
-##                    for use in the PathSim simulation framework
+##              Battery cell blocks wrapping PyBaMM models for PathSim
 ##
 #########################################################################################
 
 # IMPORTS ==============================================================================
 
+import numpy as np
+import casadi
 import pybamm
-from pathsim.blocks._block import Block
+from pathsim.blocks import DynamicalSystem
 
-# BASE =================================================================================
+# BLOCKS ===============================================================================
 
 
-class _CellBase(Block):
+class _CellBase(DynamicalSystem):
     """Shared base for PyBaMM cell blocks.
 
-    Handles model construction, parameter setup, lazy initialisation, and the
-    PathSim dynamic-block protocol.  Subclasses define port labels and
-    implement ``update()`` to read specific PyBaMM output variables.
+    Discretises the PyBaMM model at construction time and exposes its ODE
+    right-hand side to PathSim's numerical integrator via the ``DynamicalSystem``
+    interface.  The full state vector of the discretised model becomes the
+    PathSim state; PathSim's chosen solver advances it in time.
+
+    Because the SPMe/SPM/DFN family of models is stiff, users should prefer an
+    implicit solver (e.g. ``ESDIRK43``, ``BDF``) when constructing the
+    PathSim ``Simulation``.
+
+    Subclasses set ``_thermal_option`` and ``_pybamm_output_vars`` to select the
+    thermal sub-model and define which PyBaMM variables map to the block's
+    output ports (SOC is always appended last).
     """
 
-    initial_value = 0.0  # sentinel — makes PathSim call step() each cycle
+    _thermal_option: str = ""
+    _pybamm_output_vars: list[str] = []
 
     def __init__(
         self,
@@ -33,20 +44,14 @@ class _CellBase(Block):
         initial_soc,
         solver,
         output_variables,
-        thermal_option,
     ):
-        super().__init__()
-
         self._initial_soc = float(initial_soc)
         self._extra_var_names = list(output_variables or [])
         self.extra_outputs = {}
 
-        # model defaults
         if model is None:
-            model = pybamm.lithium_ion.SPMe(options={"thermal": thermal_option})
-        self._model = model
+            model = pybamm.lithium_ion.SPMe(options={"thermal": self._thermal_option})
 
-        # parameter setup — mark current and temperature as runtime inputs
         if parameter_values is None:
             parameter_values = pybamm.ParameterValues("Chen2020")
         parameter_values = parameter_values.copy()
@@ -54,72 +59,121 @@ class _CellBase(Block):
         parameter_values["Ambient temperature [K]"] = "[input]"
         self._parameter_values = parameter_values
 
-        # solver
-        self._pybamm_solver = solver or pybamm.CasadiSolver(mode="safe")
+        pybamm_solver = solver or pybamm.CasadiSolver(mode="safe")
 
-        self._sim = None
-        self._stepped = False
+        _build_inputs = {
+            "Current function [A]": 0.0,
+            "Ambient temperature [K]": 298.15,
+        }
+        sim = pybamm.Simulation(
+            model,
+            parameter_values=parameter_values,
+            solver=pybamm_solver,
+        )
+        sim.build(initial_soc=self._initial_soc, inputs=_build_inputs)
 
-    # -- PathSim protocol --------------------------------------------------------------
+        all_out_vars = (
+            self._pybamm_output_vars
+            + ["Discharge capacity [A.h]"]
+            + self._extra_var_names
+        )
+        input_order = ["Current function [A]", "Ambient temperature [K]"]
+        casadi_objs = sim.built_model.export_casadi_objects(
+            all_out_vars, input_parameter_order=input_order
+        )
+
+        t_sym = casadi_objs["t"]
+        x_sym = casadi_objs["x"]
+        z_sym = casadi_objs["z"]
+        p_sym = casadi_objs["inputs"]
+        y_sym = casadi.vertcat(x_sym, z_sym)
+        
+        rhs_fn = casadi.Function("rhs", [t_sym, y_sym, p_sym], [casadi_objs["rhs"]])
+        jac_fn = casadi.Function("jac_rhs", [t_sym, y_sym, p_sym], [casadi_objs["jac_rhs"]])
+        
+        out_var_fns = {}
+        for idx, var_name in enumerate(all_out_vars):
+            var_expr = casadi_objs["variables"][var_name]
+            out_var_fns[var_name] = casadi.Function(
+                f"outvar_{idx}", [t_sym, y_sym, p_sym], [var_expr]
+            )
+
+        self._casadi_rhs = rhs_fn
+        self._jac_rhs_eval = jac_fn
+        self._out_var_fcns = out_var_fns
+        self._q_nominal = float(parameter_values["Nominal cell capacity [A.h]"])
+
+        q_nominal = self._q_nominal
+        initial_soc_val = float(initial_soc)
+        pybamm_output_vars = list(self._pybamm_output_vars)
+
+        def _pack(u):
+            I = float(u[0])
+            T = float(u[1]) or 298.15
+            return casadi.DM([I, T])
+
+        def func_dyn(x, u, t):
+            y = casadi.DM(x.reshape(-1, 1))
+            p = _pack(u)
+            return np.array(rhs_fn(t, y, p)).flatten()
+
+        def jac_dyn(x, u, t):
+            y = casadi.DM(x.reshape(-1, 1))
+            p = _pack(u)
+            return np.array(jac_fn(t, y, p))
+
+        def func_alg(x, u, t):
+            y = casadi.DM(x.reshape(-1, 1))
+            p = _pack(u)
+            outputs = [float(out_var_fns[n](t, y, p)) for n in pybamm_output_vars]
+            q_dis = float(out_var_fns["Discharge capacity [A.h]"](t, y, p))
+            soc = max(0.0, min(1.0, initial_soc_val - q_dis / q_nominal))
+            outputs.append(soc)
+            return np.array(outputs)
+
+        x0_fn = casadi.Function("x0", [p_sym], [casadi_objs["x0"]])
+        z0_fn = casadi.Function("z0", [p_sym], [casadi_objs["z0"]])
+        
+        default_inputs = casadi.DM([0.0, 298.15])
+        y0 = np.array(x0_fn(default_inputs)).flatten()
+        if not casadi_objs["z0"].is_empty():
+            y0 = np.concatenate([y0, np.array(z0_fn(default_inputs)).flatten()])
+
+        super().__init__(
+            func_dyn=func_dyn,
+            func_alg=func_alg,
+            initial_value=y0,
+            jac_dyn=jac_dyn,
+        )
 
     def __len__(self):
-        return 0
+        return len(self._pybamm_output_vars) + 1
 
     def reset(self):
         super().reset()
-        self._sim = None
-        self._stepped = False
         self.extra_outputs = {}
 
-    def buffer(self, dt):
-        super().buffer(dt)
-        self._stepped = False
-
-    def step(self, t, dt):
-        # lazy initialisation on first step
-        if self._sim is None:
-            self._sim = pybamm.Simulation(
-                self._model,
-                parameter_values=self._parameter_values,
-                solver=self._pybamm_solver,
-            )
-            self._sim.build(initial_soc=self._initial_soc, inputs=self._pybamm_inputs())
-            self._q_nominal = float(
-                self._parameter_values["Nominal cell capacity [A.h]"]
-            )
-
-        if not self._stepped:
-            self._sim.step(dt, inputs=self._pybamm_inputs())
-            self._stepped = True
-
-        return True, 0.0, 1.0
-
-    # -- helpers -----------------------------------------------------------------------
-
-    def _pybamm_inputs(self):
-        """Build PyBaMM input dict from current block inputs."""
-        T = float(self.inputs[1]) or 298.15
-        return {
-            "Current function [A]": float(self.inputs[0]),
-            "Ambient temperature [K]": T,
-        }
-
-    def _read_soc(self, sol):
-        """Compute state of charge from PyBaMM solution."""
-        q_dis = float(sol["Discharge capacity [A.h]"].entries[-1])
-        return max(0.0, min(1.0, self._initial_soc - q_dis / self._q_nominal))
-
-
-# BLOCKS ===============================================================================
+    def update(self, t):
+        """Evaluate output equation and populate ``extra_outputs``."""
+        super().update(t)
+        if self._extra_var_names:
+            x = self.engine.state
+            u = self.inputs.to_array()
+            y = casadi.DM(x.reshape(-1, 1))
+            I = float(u[0])
+            T = float(u[1]) or 298.15
+            p = casadi.DM([I, T])
+            for name in self._extra_var_names:
+                self.extra_outputs[name] = float(self._out_var_fcns[name](t, y, p))
 
 
 class CellElectrical(_CellBase):
     """Cell block — electrical outputs only, external thermal coupling.
 
-    PyBaMM runs with an isothermal assumption; PathSim is responsible for
-    integrating the cell temperature ODE.  Wire ``Q_heat`` to a
-    ``LumpedThermal`` (or similar) and feed its temperature output back
-    to ``T_cell``.
+    PathSim integrates both the electrochemical state (via the discretised
+    PyBaMM ODE) and the cell temperature ODE.  Wire ``Q_heat`` to a
+    ``LumpedThermal`` (or similar) block and feed its temperature output
+    back to ``T_cell``.
 
     Parameters
     ----------
@@ -130,7 +184,8 @@ class CellElectrical(_CellBase):
     initial_soc : float
         Initial state of charge (0–1).  Default 1.0.
     solver : pybamm.BaseSolver or None
-        PyBaMM solver.  Defaults to ``CasadiSolver(mode="safe")``.
+        PyBaMM solver used only during model build / discretisation.
+        Defaults to ``CasadiSolver(mode="safe")``.
     output_variables : list[str] or None
         Extra PyBaMM variable names stored in ``block.extra_outputs`` after
         each step.
@@ -146,6 +201,12 @@ class CellElectrical(_CellBase):
     Q_heat (1) : X-averaged volumetric heat generation [W m⁻³]
     SOC (2) : state of charge (0–1)
     """
+
+    _thermal_option = "isothermal"
+    _pybamm_output_vars = [
+        "Terminal voltage [V]",
+        "X-averaged total heating [W.m-3]",
+    ]
 
     input_port_labels = {"I": 0, "T_cell": 1}
     output_port_labels = {"V": 0, "Q_heat": 1, "SOC": 2}
@@ -164,26 +225,17 @@ class CellElectrical(_CellBase):
             initial_soc,
             solver,
             output_variables,
-            thermal_option="isothermal",
         )
-
-    def update(self, t):
-        if self._sim is None or self._sim.solution is None:
-            return
-        sol = self._sim.solution
-        self.outputs[0] = float(sol["Terminal voltage [V]"].entries[-1])
-        self.outputs[1] = float(sol["X-averaged total heating [W.m-3]"].entries[-1])
-        self.outputs[2] = self._read_soc(sol)
-        for name in self._extra_var_names:
-            self.extra_outputs[name] = float(sol[name].entries[-1])
 
 
 class CellElectrothermal(_CellBase):
     """Cell block — coupled electrical and thermal model.
 
-    PyBaMM's built-in lumped thermal submodel integrates the cell temperature
-    ODE internally.  Supply a time-varying ambient / coolant temperature via
-    ``T_amb`` to couple to a pack-level thermal model.
+    PathSim integrates the full electrochemical + thermal state (via the
+    discretised PyBaMM ODE).  The cell temperature is part of the PyBaMM
+    state vector and is read back as output port ``T``.  Supply a
+    time-varying ambient / coolant temperature via ``T_amb`` to couple to a
+    pack-level thermal model.
 
     Parameters
     ----------
@@ -194,7 +246,8 @@ class CellElectrothermal(_CellBase):
     initial_soc : float
         Initial state of charge (0–1).  Default 1.0.
     solver : pybamm.BaseSolver or None
-        PyBaMM solver.  Defaults to ``CasadiSolver(mode="safe")``.
+        PyBaMM solver used only during model build / discretisation.
+        Defaults to ``CasadiSolver(mode="safe")``.
     output_variables : list[str] or None
         Extra PyBaMM variable names stored in ``block.extra_outputs`` after
         each step.
@@ -207,10 +260,17 @@ class CellElectrothermal(_CellBase):
     Outputs
     -------
     V (0) : terminal voltage [V]
-    T (1) : cell temperature [K] (computed by PyBaMM)
+    T (1) : cell temperature [K] (part of PyBaMM state)
     Q_heat (2) : X-averaged volumetric heat generation [W m⁻³]
     SOC (3) : state of charge (0–1)
     """
+
+    _thermal_option = "lumped"
+    _pybamm_output_vars = [
+        "Terminal voltage [V]",
+        "X-averaged cell temperature [K]",
+        "X-averaged total heating [W.m-3]",
+    ]
 
     input_port_labels = {"I": 0, "T_amb": 1}
     output_port_labels = {"V": 0, "T": 1, "Q_heat": 2, "SOC": 3}
@@ -229,19 +289,7 @@ class CellElectrothermal(_CellBase):
             initial_soc,
             solver,
             output_variables,
-            thermal_option="lumped",
         )
-
-    def update(self, t):
-        if self._sim is None or self._sim.solution is None:
-            return
-        sol = self._sim.solution
-        self.outputs[0] = float(sol["Terminal voltage [V]"].entries[-1])
-        self.outputs[1] = float(sol["X-averaged cell temperature [K]"].entries[-1])
-        self.outputs[2] = float(sol["X-averaged total heating [W.m-3]"].entries[-1])
-        self.outputs[3] = self._read_soc(sol)
-        for name in self._extra_var_names:
-            self.extra_outputs[name] = float(sol[name].entries[-1])
 
 
 Cell = CellElectrothermal
