@@ -9,8 +9,8 @@
 
 # IMPORTS ==============================================================================
 
-import numpy as np
 import casadi
+import numpy as np
 import pybamm
 from pathsim.blocks import DynamicalSystem
 
@@ -87,10 +87,12 @@ class _CellBase(DynamicalSystem):
         z_sym = casadi_objs["z"]
         p_sym = casadi_objs["inputs"]
         y_sym = casadi.vertcat(x_sym, z_sym)
-        
+
         rhs_fn = casadi.Function("rhs", [t_sym, y_sym, p_sym], [casadi_objs["rhs"]])
-        jac_fn = casadi.Function("jac_rhs", [t_sym, y_sym, p_sym], [casadi_objs["jac_rhs"]])
-        
+        jac_fn = casadi.Function(
+            "jac_rhs", [t_sym, y_sym, p_sym], [casadi_objs["jac_rhs"]]
+        )
+
         out_var_fns = {}
         for idx, var_name in enumerate(all_out_vars):
             var_expr = casadi_objs["variables"][var_name]
@@ -108,9 +110,9 @@ class _CellBase(DynamicalSystem):
         pybamm_output_vars = list(self._pybamm_output_vars)
 
         def _pack(u):
-            I = float(u[0])
+            current = float(u[0])
             T = float(u[1]) or 298.15
-            return casadi.DM([I, T])
+            return casadi.DM([current, T])
 
         def func_dyn(x, u, t):
             y = casadi.DM(x.reshape(-1, 1))
@@ -133,7 +135,7 @@ class _CellBase(DynamicalSystem):
 
         x0_fn = casadi.Function("x0", [p_sym], [casadi_objs["x0"]])
         z0_fn = casadi.Function("z0", [p_sym], [casadi_objs["z0"]])
-        
+
         default_inputs = casadi.DM([0.0, 298.15])
         y0 = np.array(x0_fn(default_inputs)).flatten()
         if not casadi_objs["z0"].is_empty():
@@ -160,9 +162,9 @@ class _CellBase(DynamicalSystem):
             x = self.engine.state
             u = self.inputs.to_array()
             y = casadi.DM(x.reshape(-1, 1))
-            I = float(u[0])
+            current = float(u[0])
             T = float(u[1]) or 298.15
-            p = casadi.DM([I, T])
+            p = casadi.DM([current, T])
             for name in self._extra_var_names:
                 self.extra_outputs[name] = float(self._out_var_fcns[name](t, y, p))
 

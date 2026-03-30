@@ -84,9 +84,9 @@ class TestPorts(unittest.TestCase):
 class TestElectrical(unittest.TestCase):
     """Integration tests for CellElectrical — PathSim integrates the PyBaMM ODE."""
 
-    def _make_simulation(self, cell, I, T_cell):
+    def _make_simulation(self, cell, current, T_cell):
         """Create a Simulation with the cell and constant inputs."""
-        I_src = Constant(I)
+        I_src = Constant(current)
         T_src = Constant(T_cell)
         return Simulation(
             blocks=[I_src, T_src, cell],
@@ -132,9 +132,9 @@ class TestElectrical(unittest.TestCase):
 class TestElectrothermal(unittest.TestCase):
     """Integration tests for CellElectrothermal — PathSim integrates the PyBaMM ODE."""
 
-    def _make_simulation(self, cell, I, T_amb):
+    def _make_simulation(self, cell, current, T_amb):
         """Create a Simulation with the cell and constant inputs."""
-        I_src = Constant(I)
+        I_src = Constant(current)
         T_src = Constant(T_amb)
         return Simulation(
             blocks=[I_src, T_src, cell],
