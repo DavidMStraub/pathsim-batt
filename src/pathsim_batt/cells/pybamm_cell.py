@@ -1,7 +1,7 @@
 #########################################################################################
 ##
-##                          PYBAMM CELL BLOCKS
-##                           (cells/pybamm_cell.py)
+##                          PyBaMM CELL BLOCKS
+##                          (cells/pybamm_cell.py)
 ##
 ##              Battery cell blocks wrapping PyBaMM models for PathSim
 ##
