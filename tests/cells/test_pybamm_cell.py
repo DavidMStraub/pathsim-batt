@@ -81,16 +81,13 @@ class TestPorts(unittest.TestCase):
             self.assertIsNotNone(cell._casadi_rhs)
 
     def test_state_size_equals_differential_states_only(self):
-        """Initial state must contain only differential (x) variables, not algebraic (z)."""
-        import casadi
+        """State must contain only differential (x) variables, not algebraic (z)."""
         import pybamm as pb
 
         for cls in (CellElectrical, CellElectrothermal):
             cell = cls()
             # Rebuild the same model to get the expected x size from PyBaMM
-            model = pb.lithium_ion.SPMe(
-                options={"thermal": cell._thermal_option}
-            )
+            model = pb.lithium_ion.SPMe(options={"thermal": cell._thermal_option})
             pv = cell._parameter_values.copy()
             sim = pb.Simulation(
                 model,
@@ -99,11 +96,17 @@ class TestPorts(unittest.TestCase):
             )
             sim.build(
                 initial_soc=cell._initial_soc,
-                inputs={"Current function [A]": 0.0, "Ambient temperature [K]": 298.15},
+                inputs={
+                    "Current function [A]": 0.0,
+                    "Ambient temperature [K]": 298.15,
+                },
             )
             objs = sim.built_model.export_casadi_objects(
                 ["Terminal voltage [V]"],
-                input_parameter_order=["Current function [A]", "Ambient temperature [K]"],
+                input_parameter_order=[
+                    "Current function [A]",
+                    "Ambient temperature [K]",
+                ],
             )
             expected_x_size = objs["x"].numel()
             self.assertEqual(len(cell.initial_value), expected_x_size)
