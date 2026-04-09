@@ -47,7 +47,7 @@ class _CellBase(DynamicalSystem):
         model,
         parameter_values,
         initial_soc,
-        solver,
+        pybamm_solver,
         output_variables,
     ):
         self._initial_soc = float(initial_soc)
@@ -64,7 +64,7 @@ class _CellBase(DynamicalSystem):
         parameter_values["Ambient temperature [K]"] = "[input]"
         self._parameter_values = parameter_values
 
-        pybamm_solver = solver or pybamm.CasadiSolver(mode="safe")
+        pybamm_solver = pybamm_solver or pybamm.CasadiSolver(mode="safe")
 
         _build_inputs = {
             "Current function [A]": 0.0,
@@ -122,9 +122,7 @@ class _CellBase(DynamicalSystem):
         pybamm_output_vars = list(self._pybamm_output_vars)
 
         def _pack(u):
-            current = float(u[0])
-            T = float(u[1]) or 298.15
-            return casadi.DM([current, T])
+            return casadi.DM([float(u[0]), float(u[1])])
 
         def func_dyn(x, u, t):
             xv = casadi.DM(x.reshape(-1, 1))
@@ -171,11 +169,10 @@ class _CellBase(DynamicalSystem):
             x = self.engine.state
             u = self.inputs.to_array()
             xv = casadi.DM(x.reshape(-1, 1))
-            current = float(u[0])
-            T = float(u[1]) or 298.15
-            p = casadi.DM([current, T])
+            p = casadi.DM([float(u[0]), float(u[1])])
             for name in self._extra_var_names:
-                self.extra_outputs[name] = float(self._out_var_fcns[name](t, xv, p))
+                val = np.array(self._out_var_fcns[name](t, xv, p)).squeeze()
+                self.extra_outputs[name] = float(val) if val.ndim == 0 else val
 
 
 class CellElectrical(_CellBase):
@@ -194,7 +191,7 @@ class CellElectrical(_CellBase):
         PyBaMM parameter set.  Defaults to ``Chen2020``.
     initial_soc : float
         Initial state of charge (0–1).  Default 1.0.
-    solver : pybamm.BaseSolver or None
+    pybamm_solver : pybamm.BaseSolver or None
         PyBaMM solver used only during model build / discretisation.
         Defaults to ``CasadiSolver(mode="safe")``.
     output_variables : list[str] or None
@@ -227,14 +224,14 @@ class CellElectrical(_CellBase):
         model=None,
         parameter_values=None,
         initial_soc=1.0,
-        solver=None,
+        pybamm_solver=None,
         output_variables=None,
     ):
         super().__init__(
             model,
             parameter_values,
             initial_soc,
-            solver,
+            pybamm_solver,
             output_variables,
         )
 
@@ -256,7 +253,7 @@ class CellElectrothermal(_CellBase):
         PyBaMM parameter set.  Defaults to ``Chen2020``.
     initial_soc : float
         Initial state of charge (0–1).  Default 1.0.
-    solver : pybamm.BaseSolver or None
+    pybamm_solver : pybamm.BaseSolver or None
         PyBaMM solver used only during model build / discretisation.
         Defaults to ``CasadiSolver(mode="safe")``.
     output_variables : list[str] or None
@@ -291,14 +288,14 @@ class CellElectrothermal(_CellBase):
         model=None,
         parameter_values=None,
         initial_soc=1.0,
-        solver=None,
+        pybamm_solver=None,
         output_variables=None,
     ):
         super().__init__(
             model,
             parameter_values,
             initial_soc,
-            solver,
+            pybamm_solver,
             output_variables,
         )
 
