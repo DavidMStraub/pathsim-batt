@@ -22,10 +22,15 @@ class _CellBase(DynamicalSystem):
 
     Discretises the PyBaMM model at construction time and exposes its ODE
     right-hand side to PathSim's numerical integrator via the ``DynamicalSystem``
-    interface.  The full state vector of the discretised model becomes the
-    PathSim state; PathSim's chosen solver advances it in time.
+    interface.  The differential state vector of the discretised model becomes
+    the PathSim state; PathSim's chosen solver advances it in time.
 
-    Because the SPMe/SPM/DFN family of models is stiff, users should prefer an
+    Only PyBaMM models that produce a pure ODE after discretisation are
+    supported (i.e. models with no algebraic variables, such as SPMe and SPM).
+    Models that result in a DAE system (e.g. DFN) are not supported and will
+    raise ``NotImplementedError`` at construction time.
+
+    Because the SPMe/SPM family of models is stiff, users should prefer an
     implicit solver (e.g. ``ESDIRK43``, ``BDF``) when constructing the
     PathSim ``Simulation``.
 
@@ -86,18 +91,25 @@ class _CellBase(DynamicalSystem):
         x_sym = casadi_objs["x"]
         z_sym = casadi_objs["z"]
         p_sym = casadi_objs["inputs"]
-        y_sym = casadi.vertcat(x_sym, z_sym)
 
-        rhs_fn = casadi.Function("rhs", [t_sym, y_sym, p_sym], [casadi_objs["rhs"]])
+        if z_sym.numel() > 0:
+            raise NotImplementedError(
+                f"{type(self).__name__}: the supplied PyBaMM model has "
+                f"{z_sym.numel()} algebraic variable(s) after discretisation "
+                "(DAE system). Only pure ODE models are supported. "
+                "Use SPMe or SPM instead of DFN."
+            )
+
+        rhs_fn = casadi.Function("rhs", [t_sym, x_sym, p_sym], [casadi_objs["rhs"]])
         jac_fn = casadi.Function(
-            "jac_rhs", [t_sym, y_sym, p_sym], [casadi_objs["jac_rhs"]]
+            "jac_rhs", [t_sym, x_sym, p_sym], [casadi_objs["jac_rhs"]]
         )
 
         out_var_fns = {}
         for idx, var_name in enumerate(all_out_vars):
             var_expr = casadi_objs["variables"][var_name]
             out_var_fns[var_name] = casadi.Function(
-                f"outvar_{idx}", [t_sym, y_sym, p_sym], [var_expr]
+                f"outvar_{idx}", [t_sym, x_sym, p_sym], [var_expr]
             )
 
         self._casadi_rhs = rhs_fn
@@ -115,31 +127,28 @@ class _CellBase(DynamicalSystem):
             return casadi.DM([current, T])
 
         def func_dyn(x, u, t):
-            y = casadi.DM(x.reshape(-1, 1))
+            xv = casadi.DM(x.reshape(-1, 1))
             p = _pack(u)
-            return np.array(rhs_fn(t, y, p)).flatten()
+            return np.array(rhs_fn(t, xv, p)).flatten()
 
         def jac_dyn(x, u, t):
-            y = casadi.DM(x.reshape(-1, 1))
+            xv = casadi.DM(x.reshape(-1, 1))
             p = _pack(u)
-            return np.array(jac_fn(t, y, p))
+            return np.array(jac_fn(t, xv, p))
 
         def func_alg(x, u, t):
-            y = casadi.DM(x.reshape(-1, 1))
+            xv = casadi.DM(x.reshape(-1, 1))
             p = _pack(u)
-            outputs = [float(out_var_fns[n](t, y, p)) for n in pybamm_output_vars]
-            q_dis = float(out_var_fns["Discharge capacity [A.h]"](t, y, p))
+            outputs = [float(out_var_fns[n](t, xv, p)) for n in pybamm_output_vars]
+            q_dis = float(out_var_fns["Discharge capacity [A.h]"](t, xv, p))
             soc = max(0.0, min(1.0, initial_soc_val - q_dis / q_nominal))
             outputs.append(soc)
             return np.array(outputs)
 
         x0_fn = casadi.Function("x0", [p_sym], [casadi_objs["x0"]])
-        z0_fn = casadi.Function("z0", [p_sym], [casadi_objs["z0"]])
 
         default_inputs = casadi.DM([0.0, 298.15])
         y0 = np.array(x0_fn(default_inputs)).flatten()
-        if not casadi_objs["z0"].is_empty():
-            y0 = np.concatenate([y0, np.array(z0_fn(default_inputs)).flatten()])
 
         super().__init__(
             func_dyn=func_dyn,
@@ -161,12 +170,12 @@ class _CellBase(DynamicalSystem):
         if self._extra_var_names:
             x = self.engine.state
             u = self.inputs.to_array()
-            y = casadi.DM(x.reshape(-1, 1))
+            xv = casadi.DM(x.reshape(-1, 1))
             current = float(u[0])
             T = float(u[1]) or 298.15
             p = casadi.DM([current, T])
             for name in self._extra_var_names:
-                self.extra_outputs[name] = float(self._out_var_fcns[name](t, y, p))
+                self.extra_outputs[name] = float(self._out_var_fcns[name](t, xv, p))
 
 
 class CellElectrical(_CellBase):

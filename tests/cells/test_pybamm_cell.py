@@ -80,6 +80,56 @@ class TestPorts(unittest.TestCase):
             cell = cls()
             self.assertIsNotNone(cell._casadi_rhs)
 
+    def test_state_size_equals_differential_states_only(self):
+        """Initial state must contain only differential (x) variables, not algebraic (z)."""
+        import casadi
+        import pybamm as pb
+
+        for cls in (CellElectrical, CellElectrothermal):
+            cell = cls()
+            # Rebuild the same model to get the expected x size from PyBaMM
+            model = pb.lithium_ion.SPMe(
+                options={"thermal": cell._thermal_option}
+            )
+            pv = cell._parameter_values.copy()
+            sim = pb.Simulation(
+                model,
+                parameter_values=pv,
+                solver=pb.CasadiSolver(mode="safe"),
+            )
+            sim.build(
+                initial_soc=cell._initial_soc,
+                inputs={"Current function [A]": 0.0, "Ambient temperature [K]": 298.15},
+            )
+            objs = sim.built_model.export_casadi_objects(
+                ["Terminal voltage [V]"],
+                input_parameter_order=["Current function [A]", "Ambient temperature [K]"],
+            )
+            expected_x_size = objs["x"].numel()
+            self.assertEqual(len(cell.initial_value), expected_x_size)
+
+    def test_jac_dyn_is_square(self):
+        """jac_dyn must return a square (n×n) matrix where n is the state size."""
+        for cls in (CellElectrical, CellElectrothermal):
+            cell = cls()
+            n = len(cell.initial_value)
+            x = cell.initial_value
+            u = np.array([0.0, 298.15])
+            J = cell.jac_dyn(x, u, 0.0)
+            self.assertEqual(J.shape, (n, n))
+
+    def test_dfn_model_raises(self):
+        """DFN models (DAE after discretisation) must raise NotImplementedError."""
+        dfn = pybamm.lithium_ion.DFN(options={"thermal": "isothermal"})
+        with self.assertRaises(NotImplementedError):
+            CellElectrical(model=dfn)
+
+    def test_dfn_lumped_raises(self):
+        """DFN with lumped thermal also has algebraic variables and must raise."""
+        dfn = pybamm.lithium_ion.DFN(options={"thermal": "lumped"})
+        with self.assertRaises(NotImplementedError):
+            CellElectrothermal(model=dfn)
+
 
 class TestElectrical(unittest.TestCase):
     """Integration tests for CellElectrical — PathSim integrates the PyBaMM ODE."""

@@ -29,9 +29,11 @@ PathSim-Batt extends the [PathSim](https://github.com/pathsim/pathsim) simulatio
 
 ## PyBaMM integration
 
-The cell blocks wrap [PyBaMM](https://pybamm.org) models behind the PathSim block interface. PyBaMM discretises the electrochemistry equations (SPMe, DFN, ...) at construction time, then PathSim's numerical integrator advances the state vector using the exported ODE right-hand side.
+The cell blocks wrap [PyBaMM](https://pybamm.org) models behind the PathSim block interface. PyBaMM discretises the electrochemistry equations at construction time, then PathSim's numerical integrator advances the state vector using the exported ODE right-hand side.
 
-- **Any PyBaMM model** can be injected via the `model` parameter
+Only models that yield a **pure ODE** after discretisation are supported — currently SPMe and SPM. Models such as DFN that produce a DAE system (algebraic variables) will raise `NotImplementedError` at construction time.
+
+- **ODE-type PyBaMM models** (SPMe, SPM) can be injected via the `model` parameter
 - **Any parameter set** can be used via `parameter_values` (defaults to `Chen2020`)
 - **Extra output variables** from PyBaMM are accessible via `block.extra_outputs`
 - **Immediate initialisation** — the PyBaMM model is discretised during block construction
@@ -39,7 +41,7 @@ The cell blocks wrap [PyBaMM](https://pybamm.org) models behind the PathSim bloc
 ```python
 import pybamm
 
-model  = pybamm.lithium_ion.DFN(options={"thermal": "lumped"})
+model  = pybamm.lithium_ion.SPMe(options={"thermal": "lumped"})
 params = pybamm.ParameterValues("Mohtat2020")
 cell   = CellElectrothermal(model=model, parameter_values=params)
 ```
