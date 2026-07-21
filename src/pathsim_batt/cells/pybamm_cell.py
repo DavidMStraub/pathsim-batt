@@ -133,32 +133,24 @@ def _detect_soc_direct_scale(
     return 1.0 / 100.0 if raw > 1.0 else 1.0
 
 
-def _inject_thermal_options(
+def _inject_model_options(
     model: pybamm.BaseBatteryModel,
     required_options: dict[str, str],
+    guard_key: str | None = None,
 ) -> pybamm.BaseBatteryModel:
     """Return *model* with *required_options* merged into its options if needed.
 
-    Handles both the thermal sub-model selection (``"thermal": "isothermal"``
-    or ``"lumped"``) and ancillary flags such as
-    ``"calculate heat source for isothermal models": "true"``.  This means
-    users can pass a plain ``pybamm.lead_acid.LOQS()`` to
-    ``CellElectrothermal`` without having to specify ``thermal='lumped'``
-    themselves — the block injects it automatically.
-
     Models that already carry the required options are returned unchanged.
-    Models that have no ``"thermal"`` key in their options at all (e.g. ECM,
-    which manages temperature internally) are skipped silently — injection
-    does not apply to them.  Models that expose ``"thermal"`` but whose
-    constructor rejects the specific option values emit a ``UserWarning``
-    and are returned unchanged.
+    If *guard_key* is given and is not a key in *model*'s options at all
+    (e.g. ``"thermal"`` for ECM, which manages temperature internally, or
+    ``"voltage as a state"`` for models that don't expose that switch),
+    injection is skipped silently — it does not apply to them.  Models that
+    expose the option(s) but whose constructor rejects the specific values
+    emit a ``UserWarning`` and are returned unchanged.
     """
     if not required_options:
         return model
-    # Models that have no "thermal" key in their options (e.g. ECM) manage
-    # temperature through their own internal mechanism and do not use PyBaMM's
-    # thermal sub-model system.  Injection is not applicable; skip silently.
-    if "thermal" in required_options and "thermal" not in model.options:
+    if guard_key is not None and guard_key not in model.options:
         return model
     if all(model.options.get(k) == v for k, v in required_options.items()):
         return model
@@ -169,11 +161,45 @@ def _inject_thermal_options(
 
         warnings.warn(
             f"{type(model).__name__} does not support options {required_options}; "
-            "thermal behaviour may be incorrect.",
+            "behaviour may be incorrect.",
             UserWarning,
             stacklevel=4,
         )
         return model
+
+
+def _inject_thermal_options(
+    model: pybamm.BaseBatteryModel,
+    required_options: dict[str, str],
+) -> pybamm.BaseBatteryModel:
+    """Return *model* with thermal *required_options* merged into its options.
+
+    Handles both the thermal sub-model selection (``"thermal": "isothermal"``
+    or ``"lumped"``) and ancillary flags such as
+    ``"calculate heat source for isothermal models": "true"``.  This means
+    users can pass a plain ``pybamm.lead_acid.LOQS()`` to
+    ``CellElectrothermal`` without having to specify ``thermal='lumped'``
+    themselves — the block injects it automatically.
+
+    Models that have no ``"thermal"`` key in their options at all (e.g. ECM,
+    which manages temperature internally) are skipped silently.
+    """
+    return _inject_model_options(model, required_options, guard_key="thermal")
+
+
+# Since PyBaMM 26.7, these default to "true"/"algebraic", turning SPM/SPMe
+# into DAEs; force the pre-26.7 pure-ODE discretisation that _CellBase needs.
+_ODE_LEGACY_OPTIONS: dict[str, str] = {
+    "voltage as a state": "false",
+    "surface form": "false",
+}
+
+
+def _inject_ode_options(model: pybamm.BaseBatteryModel) -> pybamm.BaseBatteryModel:
+    """Force the pre-26.7 pure-ODE discretisation for models that support it."""
+    return _inject_model_options(
+        model, _ODE_LEGACY_OPTIONS, guard_key="voltage as a state"
+    )
 
 
 def _build_simulation(
@@ -268,6 +294,7 @@ class _CellBase(DynamicalSystem):
                 model,
                 {"thermal": self._thermal_option, **self._thermal_extra_options},
             )
+        model = _inject_ode_options(model)
 
         self._parameter_values = _prepare_parameter_values(parameter_values)
         try:
@@ -280,7 +307,7 @@ class _CellBase(DynamicalSystem):
                 "and 'Upper voltage cut-off [V]'."
             ) from exc
 
-        pybamm_solver = pybamm_solver or pybamm.CasadiSolver(mode="safe")
+        pybamm_solver = pybamm_solver or pybamm.IDAKLUSolver()
 
         sim = pybamm.Simulation(
             model,
@@ -605,7 +632,7 @@ class CellElectrical(_CellBase):
         Initial state of charge (0–1).  Default 1.0.
     pybamm_solver : pybamm.BaseSolver or None
         PyBaMM solver used only during model build / discretisation.
-        Defaults to ``CasadiSolver(mode="safe")``.
+        Defaults to ``IDAKLUSolver()``.
 
     Inputs
     ------
@@ -654,7 +681,7 @@ class CellElectrothermal(_CellBase):
         Initial state of charge (0–1).  Default 1.0.
     pybamm_solver : pybamm.BaseSolver or None
         PyBaMM solver used only during model build / discretisation.
-        Defaults to ``CasadiSolver(mode="safe")``.
+        Defaults to ``IDAKLUSolver()``.
 
     Inputs
     ------

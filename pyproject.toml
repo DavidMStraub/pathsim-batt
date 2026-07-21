@@ -31,7 +31,8 @@ dependencies = [
     # marker resolves to a normal eager install on every real platform and
     # is skipped on Emscripten so the pure-Python parts of the toolbox
     # (`pathsim_batt.thermal`) still install in the browser.
-    "pybamm>=25.12; sys_platform != 'emscripten'",
+    # Upper-bounded: each new minor release is vetted before being allowed.
+    "pybamm>=25.12,<26.8; sys_platform != 'emscripten'",
 ]
 
 [project.optional-dependencies]

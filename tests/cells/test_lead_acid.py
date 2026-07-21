@@ -57,8 +57,9 @@ class TestLeadAcidLOQS(unittest.TestCase):
         assert_electrothermal_outputs(self, cell, self.v_lo, self.v_hi)
 
     def test_cosim_electrical_smoke(self):
-        # LOQS is an ODE; IDAKLUSolver (co-sim default) requires a Jacobian
-        # for ODE models and errors, so use CasadiSolver explicitly.
+        # On PyBaMM < 26.7, LOQS disables its Jacobian and IDAKLUSolver (the
+        # co-sim default) errors without one; CasadiSolver works on every
+        # pinned version (25.12-26.7), so use it explicitly here.
         solver = pybamm.CasadiSolver(mode="safe")
         cell = CellCoSimElectrical(
             model=self._model(),

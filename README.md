@@ -77,7 +77,7 @@ Thermal sub-model and heat-source options are injected automatically — pass th
 | `lead_acid.Full` | `Sulzer2019` | ❌ DAE | ❌ DAE | ✅ | ✅ |
 | `equivalent_circuit.Thevenin` | `ECM_Example` | ✅ | ✅ | ✅ ² | ✅ ² |
 
-¹ Pass `pybamm_solver=pybamm.CasadiSolver(mode="safe")` — the default `IDAKLUSolver` requires a Jacobian that ODE models do not provide.
+¹ On PyBaMM < 26.7, pass `pybamm_solver=pybamm.CasadiSolver(mode="safe")` — the default `IDAKLUSolver` errors because `LOQS` disabled its Jacobian. Fixed upstream in PyBaMM 26.7; the default `IDAKLUSolver` works there.
 
 ² `initial_soc=1.0` fails because PyBaMM requires event values to be strictly positive at `t=0`; the "Maximum SoC" event is zero exactly at full charge. Any value below 1.0 (e.g. `initial_soc=0.99`) works.
 
