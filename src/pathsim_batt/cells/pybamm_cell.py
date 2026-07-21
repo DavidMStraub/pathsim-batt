@@ -196,10 +196,10 @@ _ODE_LEGACY_OPTIONS: dict[str, str] = {
 
 
 def _inject_ode_options(model: pybamm.BaseBatteryModel) -> pybamm.BaseBatteryModel:
-    """Force the pre-26.7 pure-ODE discretisation for models that support it."""
-    return _inject_model_options(
-        model, _ODE_LEGACY_OPTIONS, guard_key="voltage as a state"
-    )
+    """Force the pre-26.7 pure-ODE discretisation for SPM/SPMe models."""
+    if not isinstance(model, (pybamm.lithium_ion.SPM, pybamm.lithium_ion.SPMe)):
+        return model
+    return _inject_model_options(model, _ODE_LEGACY_OPTIONS)
 
 
 def _build_simulation(
