@@ -156,7 +156,7 @@ def _inject_model_options(
         return model
     try:
         return type(model)(options={**dict(model.options), **required_options})
-    except (pybamm.OptionError, TypeError):
+    except (pybamm.OptionError, TypeError, KeyError):
         import warnings
 
         warnings.warn(
