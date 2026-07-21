@@ -187,19 +187,14 @@ def _inject_thermal_options(
     return _inject_model_options(model, required_options, guard_key="thermal")
 
 
-# Since PyBaMM 26.7, these default to "true"/"algebraic", turning SPM/SPMe
-# into DAEs; force the pre-26.7 pure-ODE discretisation that _CellBase needs.
-_ODE_LEGACY_OPTIONS: dict[str, str] = {
-    "voltage as a state": "false",
-    "surface form": "false",
-}
-
-
+# "surface form" isn't a valid option outside SPM/SPMe, so it's only added there.
 def _inject_ode_options(model: pybamm.BaseBatteryModel) -> pybamm.BaseBatteryModel:
-    """Force the pre-26.7 pure-ODE discretisation for SPM/SPMe models."""
-    if not isinstance(model, (pybamm.lithium_ion.SPM, pybamm.lithium_ion.SPMe)):
+    if "voltage as a state" not in model.options:
         return model
-    return _inject_model_options(model, _ODE_LEGACY_OPTIONS)
+    required = {"voltage as a state": "false"}
+    if isinstance(model, (pybamm.lithium_ion.SPM, pybamm.lithium_ion.SPMe)):
+        required["surface form"] = "false"
+    return _inject_model_options(model, required)
 
 
 def _build_simulation(
