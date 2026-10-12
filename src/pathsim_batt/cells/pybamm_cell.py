@@ -13,9 +13,8 @@ import casadi
 import numpy as np
 import numpy.typing as npt
 import pybamm
-from pathsim.blocks import Block, SemiExplicitDAE, Wrapper
+from pathsim.blocks import SemiExplicitDAE, Wrapper
 from pathsim.exceptions import StopSimulation
-from pathsim.utils.register import Register
 
 # HELPERS =============================================================================
 
@@ -387,17 +386,15 @@ class _CellBase(SemiExplicitDAE):
             jac_alg_x=_jac(jac_fns[2]),
             jac_z=_jac(jac_fns[3]),
             tolerance=tolerance,
-        )
-
-        # SemiExplicitDAE sizes its outputs to the stacked state [x, z]; this
-        # block exposes the cell outputs instead.
-        self.outputs = Register(
-            size=len(self.output_port_labels),
-            mapping=self.output_port_labels.copy(),
+            func_out=self._cell_outputs,
         )
 
     def _cell_outputs(self, x, z, u, t) -> npt.NDArray[np.float64]:
-        """Evaluate the output variables and the SOC at the given state."""
+        """Evaluate the output variables and the SOC at the given state.
+
+        Raises ``StopSimulation`` when the terminal voltage leaves the
+        cut-off window of the parameter set.
+        """
         values = [float(v) for v in self._out_fn(t, x, z, casadi.DM(u[:2]))]
         outputs = values[:-1]
         if self._soc_cap_var is not None:
@@ -405,32 +402,15 @@ class _CellBase(SemiExplicitDAE):
         else:
             soc = values[-1] * self._soc_direct_scale
         outputs.append(max(0.0, min(1.0, soc)))
-        return np.array(outputs)
-
-    def update(self, t: float) -> None:
-        """Eliminate the algebraic states and evaluate the cell outputs.
-
-        Raises ``StopSimulation`` when the terminal voltage leaves the
-        cut-off window of the parameter set.
-        """
-        x, u = self.engine.state, self.inputs.to_array()
-        self._z = self._solve_z(x, u, t)
-        outputs = self._cell_outputs(x, self._z, u, t)
-        self.outputs.update_from_array(outputs)
         V = outputs[self._v_idx]
         if V <= self._v_lower:
             raise StopSimulation(f"undervoltage: V={V:.4f} V <= {self._v_lower} V")
         if V >= self._v_upper:
             raise StopSimulation(f"overvoltage: V={V:.4f} V >= {self._v_upper} V")
+        return np.array(outputs)
 
     def __len__(self) -> int:
         return len(self._pybamm_output_vars) + 1
-
-    def reset(self) -> None:
-        # Bypass SemiExplicitDAE.reset, which writes the stacked state
-        # [x, z] to the outputs.
-        Block.reset(self)
-        self._z = self.z0.copy()
 
 
 class _CoSimCellBase(Wrapper):
