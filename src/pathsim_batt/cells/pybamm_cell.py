@@ -715,8 +715,8 @@ class CellCoSimElectrical(_CoSimCellBase):
     ``pybamm.Simulation.step()``. PathSim receives zero-order-held outputs
     between macro-steps.
 
-    PyBaMM's own solvers handle any PyBaMM model, including those that
-    result in DAE systems (e.g. DFN).
+    PyBaMM's own solver advances the model, so this block works with any
+    model PyBaMM can solve that provides the required output variables.
 
     Parameters
     ----------
@@ -752,8 +752,8 @@ class CellCoSimElectrothermal(_CoSimCellBase):
     ``pybamm.Simulation.step()``. PathSim receives zero-order-held outputs
     between macro-steps.
 
-    PyBaMM's own solvers handle any PyBaMM model, including those that
-    result in DAE systems (e.g. DFN).
+    PyBaMM's own solver advances the model, so this block works with any
+    model PyBaMM can solve that provides the required output variables.
 
     Parameters
     ----------

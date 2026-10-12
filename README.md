@@ -66,7 +66,7 @@ Two decisions determine the right block: **thermal ownership** and **integration
 
 ## PyBaMM models
 
-All blocks accept any PyBaMM battery model, e.g. `lithium_ion.SPM`, `SPMe`, `DFN`, `lead_acid.LOQS`, `lead_acid.Full` or `equivalent_circuit.Thevenin`. Thermal sub-model and heat-source options are injected automatically — pass the bare model class with no `options=`.
+All blocks work with the standard PyBaMM battery models, e.g. `lithium_ion.SPM`, `SPMe`, `DFN`, `lead_acid.LOQS`, `lead_acid.Full` or `equivalent_circuit.Thevenin`. The model must provide the variables the block outputs (terminal voltage, heat generation and, for the electrothermal blocks, cell temperature); some minimal models such as `sodium_ion.BasicDFN` do not. Thermal sub-model and heat-source options are injected automatically — pass the bare model class with no `options=`.
 
 Known limitations of the co-simulation blocks:
 
